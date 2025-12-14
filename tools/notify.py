@@ -1,2 +1,2 @@
-def notify(message: str):
-    print(f"[NOTIFY] {message}")
+def notify(alert, diagnostics):
+    print('[ESCALATION]', alert, diagnostics)

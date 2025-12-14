@@ -1,12 +1,6 @@
 def get_alerts():
     return [
-        {
-            "id": "cpu_high_1",
-            "severity": "warning",
-            "service": "billing-api",
-            "metric": "cpu",
-            "value": 92,
-            "threshold": 85,
-            "timestamp": "2025-01-12T10:00:00"
-        }
+        {'id': '1', 'metric': 'cpu', 'service': 'billing'},
+        {'id': '2', 'metric': 'db', 'service': 'orders'},
+        {'id': '3', 'metric': 'disk', 'service': 'storage'},
     ]

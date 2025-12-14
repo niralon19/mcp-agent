@@ -1,2 +1,2 @@
-def get_service_health(service: str):
-    return {"status": "degraded"}
+def get_service_health(service):
+    return {'status': 'degraded'}

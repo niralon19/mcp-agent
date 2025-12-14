@@ -1,4 +1,4 @@
 from agent.agent import run_daemon
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     run_daemon()
