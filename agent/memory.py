@@ -1,17 +1,35 @@
+from __future__ import annotations
+
 import json
-from pathlib import Path
+import os
+from dataclasses import dataclass
+from typing import Any, Dict
 
-STATE_FILE = Path('agent_state.json')
 
-def _load():
-    if not STATE_FILE.exists():
-        return []
-    return json.loads(STATE_FILE.read_text())
+STATE_DIR = os.getenv("STATE_DIR", "state")
+STATE_FILE = os.path.join(STATE_DIR, "memory.json")
 
-def already_handled(alert_id):
-    return alert_id in _load()
 
-def mark_handled(alert_id):
-    data = _load()
-    data.append(alert_id)
-    STATE_FILE.write_text(json.dumps(data, indent=2))
+@dataclass
+class Memory:
+    handled_alert_ids: set[str]
+
+    @classmethod
+    def load(cls) -> "Memory":
+        os.makedirs(STATE_DIR, exist_ok=True)
+        if not os.path.exists(STATE_FILE):
+            return cls(handled_alert_ids=set())
+        with open(STATE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return cls(handled_alert_ids=set(data.get("handled_alert_ids", [])))
+
+    def save(self) -> None:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump({"handled_alert_ids": sorted(self.handled_alert_ids)}, f, ensure_ascii=False, indent=2)
+
+    def already_handled(self, alert_id: str) -> bool:
+        return alert_id in self.handled_alert_ids
+
+    def mark_handled(self, alert_id: str) -> None:
+        self.handled_alert_ids.add(alert_id)

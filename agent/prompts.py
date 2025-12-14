@@ -1,19 +1,27 @@
-DECISION_PROMPT = '''
-You are a senior SRE.
+DECISION_PROMPT = """אתה איש NOC/SRE זהיר ומנוסה.
 
-Alert:
-{alert}
+קיבלת Alert:
+{alert_json}
 
-Context:
-{context}
+הקשר (Context):
+{context_json}
 
-Choose ONE action from:
-restart_service, notify, escalate
+בחר פעולה אחת (או null אם לא צריך פעולה):
+- restart_service
+- notify
+- null
 
-Respond ONLY in JSON:
-{
-  "action": "...",
-  "reason": "...",
+חוקים:
+- אם status == down: מומלץ restart_service (אם לא PROD קריטי).
+- אם status == degraded: לרוב notify.
+- אם status == healthy: null.
+- אם env == prod: אל תבצע restart_service אלא אם confidence >= 0.85.
+
+החזר JSON בלבד בפורמט:
+{{
+  "action": "restart_service|notify|null",
+  "action_input": {{...}},
+  "reason": "string",
   "confidence": 0.0
-}
-'''
+}}
+"""

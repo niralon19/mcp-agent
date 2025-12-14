@@ -1,159 +1,183 @@
-# MCP Ops Agent 🤖  
-Continuous Operations & Monitoring Agent
+# MCP Ops Agent – Agent תפעולי (NOC/SRE) עם Playbooks + Diagnostics
 
-## 🎯 מטרת הפרויקט
-Agent תפעולי חכם (Ops / NOC / SRE) שעובד 24/7 ומטפל בהתראות **כמו איש צוות אמיתי**:
+פרויקט זה הוא **Agent תפעולי רציף (daemon)** שמדמה “איש NOC”:
+> קיבלתי התראה → בדקתי → אבחנתי → טיפלתי → וידאתי → תיעדתי
 
-- מקבל Alerts ממערכות ניטור
-- בונה הקשר (context) רחב
-- מחליט מה לעשות (LLM)
-- מפעיל פעולות דרך MCP tools
-- זוכר מה קרה ולומד לאורך זמן
-- מסלים לאדם כשצריך
-
-ה-Agent מחליף Tier-1 Engineer.
+הדגש כאן הוא על:
+- **Playbooks** (טיפול עקבי ומובנה לפי סוג התראה)
+- **Diagnostics** (שקיפות מלאה: למה האג'נט עשה/לא עשה משהו)
 
 ---
 
-## 🧠 ארכיטקטורה כללית
+## מה קיים בפרויקט (בגדול)
 
+### ✅ Agent רציף
+- רץ בלולאה (`agent/agent.py`)
+- מושך התראות דרך `get_alerts`
+- שומר **Idempotency**: לא מטפל באותו `alert.id` פעמיים (`agent/memory.py`)
 
----
+### ✅ Playbooks (מועדף לפני LLM)
+- קבצי YAML בתיקיית `playbooks/`
+- התאמה לפי `alert.name`
+- מנגנון הרצה פשוט וברור (`agent/playbook_engine.py`)
+- מאפשר "תפעול כמו בן אדם": בדיקה → החלטה → פעולה → אימות
 
-## 📂 מבנה הפרויקט
-mcp-server/
-├── server.py # Entrypoint – מריץ את ה-Agent כ-daemon
-├── tools/ # MCP Tools (יכולות ביצוע)
-│ ├── get_alerts.py
-│ ├── restart_service.py
-│ ├── get_service_health.py
-│ └── notify.py
-├── agent/
-│ ├── agent.py # הלולאה הראשית (Continuous Agent)
-│ ├── context.py # בניית הקשר (מצב מערכת + זיכרון)
-│ ├── decision.py # קבלת החלטות עם LLM
-│ ├── policies.py # חוקים קשיחים (Guardrails)
-│ ├── memory.py # זיכרון (State)
-│ ├── learning.py # למידה מצטברת
-│ └── prompts.py # פרומפטים ל-LLM
-├── models.py # מודלים לוגיים (Alerts וכו')
-└── requirements.txt
+### ✅ Diagnostics (Trace מקצה-לקצה)
+- לכל alert נוצר `trace_id`
+- כל שלב מתועד (`DiagnosticsContext`)
+- API מקומי לצפייה ב-traces (FastAPI):
+  - `GET /health`
+  - `GET /diagnostics?limit=10`
+  - `GET /diagnostics/{trace_id}`
 
 ---
 
-## 🔄 זרימת עבודה (Flow)
+## התקנה והרצה
 
-1. `server.py` מפעיל Agent רציף (Daemon)
-2. `get_alerts` מחזיר התראות חדשות
-3. נבדק האם ההתראה כבר טופלה (Memory)
-4. נבנה Context:
-   - מצב השירות
-   - זיכרון עבר
-   - דפוסים שנלמדו
-5. Policies חוסמות פעולות מסוכנות
-6. `decision.py` מפעיל LLM לקבלת החלטה
-7. מתבצעת פעולה דרך MCP tool
-8. הזיכרון מתעד את הטיפול
-
----
-
-## 🧠 agent/agent.py – הלב של המערכת
-
-- רץ בלולאה אינסופית
-- Idempotent – לא מטפל באותה התראה פעמיים
-- מתנהג כמו איש Ops במשמרת
-
-זה **לא סקריפט**, זה עובד צוות.
-
----
-
-## 🧩 Context – למה זה קריטי?
-
-Agent טוב לא מגיב רק ל־Alert, אלא שואל:
-- מה מצב השירות עכשיו?
-- מה קרה בעבר?
-- האם פעולות דומות עזרו?
-- מה מותר לי לעשות?
-
-הכול נבנה ב־`context.py`.
-
----
-
-## 🚨 Policies – חוקים קשיחים
-
-Policies הם Guardrails:
-- התראות Critical → אדם
-- שירותים רגישים → לא לגעת
-- Prod ≠ Dev
-
-גם אם ה־LLM “חושב אחרת” – policies מנצחים.
-
----
-
-## 🧠 Decision (LLM)
-
-`decision.py`:
-- מקבל Alert + Context
-- מחזיר JSON בלבד:
-```json
-{
-  "action": "restart_service",
-  "reason": "...",
-  "confidence": 0.82
-}
-
-🧠 Memory
-
-memory.py:
-
-מונע טיפול כפול
-
-שומר state פשוט (JSON)
-
-בסיס ל־Human Override וללמידה עתידית
-
-📈 Learning
-
-learning.py:
-
-מסכם היסטוריה
-
-מאפשר להסיק דפוסים
-
-שלב ראשון ל־Agent שממש משתפר עם הזמן
-
-▶️ הרצה
+### 1) התקנת תלויות
+```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-export OPENAI_API_KEY=your_key
+```
+
+### 2) משתני סביבה מומלצים
+צור קובץ `.env` (אופציונלי) או export ידני:
+
+```bash
+export OPENAI_API_KEY="..."
+export OPENAI_MODEL="gpt-4.1"
+
+# לולאה
+export POLL_SECONDS=5
+
+# Diagnostics API
+export DIAG_HOST=0.0.0.0
+export DIAG_PORT=8088
+
+# דמו
+export DEMO_MODE=1
+export DEMO_ALERT_NAME=ServiceDown
+export DEMO_SERVICE=nginx
+export DEMO_SEVERITY=warning
+export ENV=dev   # dev|prod
+```
+
+### 3) הרצה
+```bash
 python server.py
+```
 
-🛣️ Roadmap מומלץ
+---
 
-Human Override (איש צוות משנה החלטה)
+## איך לראות Diagnostics בזמן אמת
 
-Confidence threshold + auto escalation
+### רשימת Traces אחרונים
+```bash
+curl "http://localhost:8088/diagnostics?limit=10"
+```
 
-Incident objects
+### Trace מלא (כולל steps + errors)
+```bash
+curl "http://localhost:8088/diagnostics/<TRACE_ID>"
+```
 
-systemd service
+✅ זה נותן לך תשובה מיידית ל:
+- “למה האג'נט החליט X?”
+- “איפה זה נתקע?”
+- “איזה tool הופעל ומה החזיר?”
 
-חיבור n8n / PagerDuty / Slack
+---
 
-Vector memory (RAG)
+## איך עובד ה-Playbook Engine
 
-🧠 עיקרון מנחה
+### מבנה Playbook (YAML)
+דוגמה: `playbooks/service_down.yaml`
 
-לא להפוך את ה-Agent לאוטומציה עיוורת
-אלא לעובד צוות זהיר, לומד, ושקוף
+- `match.alert_name` – התאמה להתראה
+- `steps` – רשימת פעולות
+  - `check` – קריאה ל-tool לאיסוף מידע
+  - `decide` – תנאי פשוט (equals) שמחליט על then/else
+  - `action` – פעולה (tool)
+  - `verify` – אימות לאחר פעולה
 
-👷 למי זה מתאים
+**המטרה:** טיפול עקבי ושקוף, בלי להמציא Flow כל פעם מחדש.
 
-Ops / NOC
+---
 
-SRE
+## מה קורה אם אין Playbook?
 
-SOC
+במקרה שאין Playbook מתאים, או ש-Playbook נכשל:
+- האג'נט בונה `context` (`agent/context.py`)
+- קורא ל-LLM (`agent/decision.py`)
+- מקבל JSON עם:
+  - action
+  - action_input
+  - confidence
+  - reason
 
-DevOps Teams
+### Safety ב-PROD
+אם `ENV=prod` והפעולה היא `restart_service`:
+- חייב confidence >= 0.85 (ברירת מחדל)
+- אחרת האג'נט יחסום restart ויעשה notify (Human-in-the-loop)
 
-Teams שרוצים להוריד רעש ולא אחריות
+---
+
+## מבנה תיקיות
+
+```text
+.
+├── server.py
+├── models.py
+├── requirements.txt
+├── agent/
+│   ├── agent.py
+│   ├── context.py
+│   ├── decision.py
+│   ├── learning.py
+│   ├── memory.py
+│   ├── playbook_engine.py
+│   ├── policies.py
+│   └── prompts.py
+├── diagnostics/
+│   ├── api.py
+│   ├── context.py
+│   ├── logging.py
+│   └── store.py
+├── tools/
+│   ├── registry.py
+│   ├── get_alerts.py
+│   ├── get_service_health.py
+│   ├── restart_service.py
+│   └── notify.py
+└── playbooks/
+    ├── service_down.yaml
+    └── high_cpu.yaml
+```
+
+---
+
+## התאמה ל-MCP אמיתי (אצלך בפרודקשן)
+כיום `ToolRegistry` הוא Registry מקומי.
+
+בפועל, אצלך אפשר:
+- להחליף `tools.call()` לקריאה ל-**MCP Server** (stdio / http / sse)
+- או לעטוף כל tool ב-client שמדבר עם `fastmcp`
+
+הארכיטקטורה כאן בנויה כך שהשינוי יהיה נקודתי – בעיקר בשכבת `tools/`.
+
+---
+
+## Roadmap מומלץ (השלב הבא)
+1. **חיבור אמיתי ל-Grafana/Alertmanager**
+2. **Retry/Backoff** לכל tool + timeouts
+3. **Policies עשירים יותר** (רשימות שירותים/סביבות/חלונות תחזוקה)
+4. **Playbooks נוספים** (DiskFull, MemoryLeak, Latency)
+5. **Approval אנושי** (Slack button / PagerDuty notes)
+6. **Metrics** (Prometheus / OpenTelemetry)
+
+---
+
+## עיקרון מנחה
+לא “אוטומציה עיוורת”, אלא:
+> עובד צוות זהיר, שקוף, וניתן לביקורת (Diagnostics + Playbooks).
