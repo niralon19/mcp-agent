@@ -1,0 +1,7 @@
+{
+  "alert_name": "DiskFull",
+  "metric": "disk",
+  "service": "postgres",
+  "severity": "critical",
+  "summary": "Disk usage 95%"
+}

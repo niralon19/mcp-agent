@@ -1,0 +1,7 @@
+{
+  "alert_name": "HighCPU",
+  "metric": "cpu",
+  "service": "nginx",
+  "severity": "warning",
+  "summary": "CPU > 90% for 5m"
+}

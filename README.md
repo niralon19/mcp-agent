@@ -1,183 +1,128 @@
-# MCP Ops Agent – Agent תפעולי (NOC/SRE) עם Playbooks + Diagnostics
+# mcp-agent-slim — Agent NOC רזה עם LLM + Playbook + Diagnostics
 
-פרויקט זה הוא **Agent תפעולי רציף (daemon)** שמדמה “איש NOC”:
-> קיבלתי התראה → בדקתי → אבחנתי → טיפלתי → וידאתי → תיעדתי
+הפרויקט הזה הוא גרסה **פשוטה מאוד** של “איש NOC אוטומטי”:
 
-הדגש כאן הוא על:
-- **Playbooks** (טיפול עקבי ומובנה לפי סוג התראה)
-- **Diagnostics** (שקיפות מלאה: למה האג'נט עשה/לא עשה משהו)
+- מקבל **Alert** (קובץ JSON)
+- ה‑**LLM מחליט** מה לעשות (כמו בגרסה הראשונה שלך)
+- שכבת **Playbook רזה** חוסמת רק מקרים בעייתיים (Guardrail עדין)
+- שכבת **Diagnostics רזה** מתעדת “מה קרה ולמה” עם `trace_id`
 
----
-
-## מה קיים בפרויקט (בגדול)
-
-### ✅ Agent רציף
-- רץ בלולאה (`agent/agent.py`)
-- מושך התראות דרך `get_alerts`
-- שומר **Idempotency**: לא מטפל באותו `alert.id` פעמיים (`agent/memory.py`)
-
-### ✅ Playbooks (מועדף לפני LLM)
-- קבצי YAML בתיקיית `playbooks/`
-- התאמה לפי `alert.name`
-- מנגנון הרצה פשוט וברור (`agent/playbook_engine.py`)
-- מאפשר "תפעול כמו בן אדם": בדיקה → החלטה → פעולה → אימות
-
-### ✅ Diagnostics (Trace מקצה-לקצה)
-- לכל alert נוצר `trace_id`
-- כל שלב מתועד (`DiagnosticsContext`)
-- API מקומי לצפייה ב-traces (FastAPI):
-  - `GET /health`
-  - `GET /diagnostics?limit=10`
-  - `GET /diagnostics/{trace_id}`
+## למה זה עדין ורזה?
+- אין מנוע פלייבוקים כבד
+- אין DB / שירותים נוספים
+- אין Web UI
+- אין “workflow engine”
+- רק שתי תוספות שמעלות אמינות ושקיפות
 
 ---
 
-## התקנה והרצה
+## התקנה
 
-### 1) התקנת תלויות
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2) משתני סביבה מומלצים
-צור קובץ `.env` (אופציונלי) או export ידני:
+הגדרת מפתח API:
 
 ```bash
 export OPENAI_API_KEY="..."
-export OPENAI_MODEL="gpt-4.1"
-
-# לולאה
-export POLL_SECONDS=5
-
-# Diagnostics API
-export DIAG_HOST=0.0.0.0
-export DIAG_PORT=8088
-
-# דמו
-export DEMO_MODE=1
-export DEMO_ALERT_NAME=ServiceDown
-export DEMO_SERVICE=nginx
-export DEMO_SEVERITY=warning
-export ENV=dev   # dev|prod
 ```
 
-### 3) הרצה
+אופציונלי: לבחור מודל
+
 ```bash
-python server.py
+export OPENAI_MODEL="gpt-4o-mini"
 ```
 
----
+אופציונלי: לשמור דיאגנוסטיקה לקובץ JSONL
 
-## איך לראות Diagnostics בזמן אמת
-
-### רשימת Traces אחרונים
 ```bash
-curl "http://localhost:8088/diagnostics?limit=10"
+export DIAGNOSTICS_JSONL="./data/diagnostics.jsonl"
 ```
 
-### Trace מלא (כולל steps + errors)
+---
+
+## הרצה
+
 ```bash
-curl "http://localhost:8088/diagnostics/<TRACE_ID>"
+python main.py examples/alert_cpu.json
 ```
 
-✅ זה נותן לך תשובה מיידית ל:
-- “למה האג'נט החליט X?”
-- “איפה זה נתקע?”
-- “איזה tool הופעל ומה החזיר?”
+או התראת דיסק:
 
----
-
-## איך עובד ה-Playbook Engine
-
-### מבנה Playbook (YAML)
-דוגמה: `playbooks/service_down.yaml`
-
-- `match.alert_name` – התאמה להתראה
-- `steps` – רשימת פעולות
-  - `check` – קריאה ל-tool לאיסוף מידע
-  - `decide` – תנאי פשוט (equals) שמחליט על then/else
-  - `action` – פעולה (tool)
-  - `verify` – אימות לאחר פעולה
-
-**המטרה:** טיפול עקבי ושקוף, בלי להמציא Flow כל פעם מחדש.
-
----
-
-## מה קורה אם אין Playbook?
-
-במקרה שאין Playbook מתאים, או ש-Playbook נכשל:
-- האג'נט בונה `context` (`agent/context.py`)
-- קורא ל-LLM (`agent/decision.py`)
-- מקבל JSON עם:
-  - action
-  - action_input
-  - confidence
-  - reason
-
-### Safety ב-PROD
-אם `ENV=prod` והפעולה היא `restart_service`:
-- חייב confidence >= 0.85 (ברירת מחדל)
-- אחרת האג'נט יחסום restart ויעשה notify (Human-in-the-loop)
-
----
-
-## מבנה תיקיות
-
-```text
-.
-├── server.py
-├── models.py
-├── requirements.txt
-├── agent/
-│   ├── agent.py
-│   ├── context.py
-│   ├── decision.py
-│   ├── learning.py
-│   ├── memory.py
-│   ├── playbook_engine.py
-│   ├── policies.py
-│   └── prompts.py
-├── diagnostics/
-│   ├── api.py
-│   ├── context.py
-│   ├── logging.py
-│   └── store.py
-├── tools/
-│   ├── registry.py
-│   ├── get_alerts.py
-│   ├── get_service_health.py
-│   ├── restart_service.py
-│   └── notify.py
-└── playbooks/
-    ├── service_down.yaml
-    └── high_cpu.yaml
+```bash
+python main.py examples/alert_disk.json
 ```
 
----
-
-## התאמה ל-MCP אמיתי (אצלך בפרודקשן)
-כיום `ToolRegistry` הוא Registry מקומי.
-
-בפועל, אצלך אפשר:
-- להחליף `tools.call()` לקריאה ל-**MCP Server** (stdio / http / sse)
-- או לעטוף כל tool ב-client שמדבר עם `fastmcp`
-
-הארכיטקטורה כאן בנויה כך שהשינוי יהיה נקודתי – בעיקר בשכבת `tools/`.
+הפלט הוא אובייקט JSON של הדיאגנוסטיקה, כולל `trace_id`, צעדים, ושגיאות אם היו.
 
 ---
 
-## Roadmap מומלץ (השלב הבא)
-1. **חיבור אמיתי ל-Grafana/Alertmanager**
-2. **Retry/Backoff** לכל tool + timeouts
-3. **Policies עשירים יותר** (רשימות שירותים/סביבות/חלונות תחזוקה)
-4. **Playbooks נוספים** (DiskFull, MemoryLeak, Latency)
-5. **Approval אנושי** (Slack button / PagerDuty notes)
-6. **Metrics** (Prometheus / OpenTelemetry)
+## איך Playbook עובד פה?
+
+`agent/playbook.py` כולל מילון פשוט:
+
+- אם `alert.metric == "cpu"` → מותר `restart_service`
+- אם `alert.metric == "disk"` → **לא** מותר `restart_service`
+
+אם אין התאמה לפלייבוק — **לא חוסמים** (כדי לשמור על ההתנהגות הדיפולטית של הגרסה הראשונה).
 
 ---
 
-## עיקרון מנחה
-לא “אוטומציה עיוורת”, אלא:
-> עובד צוות זהיר, שקוף, וניתן לביקורת (Diagnostics + Playbooks).
+## איך Diagnostics עובד פה?
+
+לכל Alert נוצר `Diagnostics` עם:
+- `trace_id` ייחודי
+- `steps[]` (רשומות זמן+שלב+דאטה)
+- `error` (אם היתה חריגה)
+
+Diagnostics מוחזר כפלט, ובנוסף אפשר לשמור ל‑JSONL עם `DIAGNOSTICS_JSONL`.
+
+---
+
+## החזרת LLM (כמו בגרסה הראשונה)
+
+החלטה מתבצעת ב־`agent/decision.py` בעזרת OpenAI **Responses API**.  
+המודל מחזיר JSON קצר בפורמט:
+
+```json
+{"action":"restart_service","confidence":0.7,"notes":"short"}
+```
+
+אם המודל מחזיר טקסט לא-JSON, יש fallback רזה שמנסה לזהות `restart`/`ignore`.
+
+---
+
+## איפה מחברים MCP אמיתי?
+
+כרגע `agent/tools.py` כולל stub שמדמה הצלחה.  
+כדי לחבר MCP:
+1. החלף את `restart_service` בקריאה ל‑MCP tool שלך (fastmcp server).
+2. שמור על אותו signature כדי לא לשנות את agent.
+
+---
+
+## מה "קריטי" שתוקן/הוסף בגרסה הזו?
+- ✅ ה‑LLM חזר להיות מקור ההחלטה
+- ✅ Playbook כ‑Guardrail (מותר/אסור)
+- ✅ Trace דיאגנוסטי לכל אירוע
+- ✅ Retry מינימלי לכלי, כדי לא ליפול על תקלות זמינות רגעיות
+
+---
+
+## קבצים חשובים
+- `agent/agent.py` — זרימת הטיפול ב‑Alert
+- `agent/decision.py` — החלטת LLM
+- `agent/playbook.py` — Guardrails
+- `agent/diagnostics.py` — Trace
+- `agent/tools.py` — Tools (כרגע stubs)
+- `ARCHITECTURE.md` — ארכיטקטורה בעברית
+
+
+## שדרוגים קטנים שנוספו (בלי לסרבל)
+
+- **Confidence Gate**: אם `confidence < 0.6` → הסלמה אוטומטית (`CONFIDENCE_MIN`).
+- **Timeout + Max Tokens ל-LLM**: מונע תקיעות ועלויות.
+- **Incident Summary**: שורת סיכום קצרה לכל אירוע (עם `trace_id`).
